@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --app-bg: #09090b;
+  --app-text: #fafafa;
+  --app-muted: #a1a1aa;
+  --app-panel: rgba(24, 24, 27, 0.72);
+  --app-line: rgba(255, 255, 255, 0.08);
+  --app-field: rgba(0, 0, 0, 0.3);
+  --app-soft: rgba(255, 255, 255, 0.035);
+  --app-sidebar: rgba(0, 0, 0, 0.22);
+  --app-nav-active-bg: #fafafa;
+  --app-nav-active-text: #09090b;
+  --app-hover: rgba(255, 255, 255, 0.07);
+  --app-button-bg: #fafafa;
+  --app-button-text: #09090b;
+  --app-button-hover: #e4e4e7;
+  --app-success: #4ade80;
+  --app-danger: #fb7185;
+  --app-warn: #fde047;
+}
+
+.theme-light {
+  --app-bg: #d9dee7;
+  --app-text: #18202d;
+  --app-muted: #4f5b6c;
+  --app-panel: rgba(235, 239, 245, 0.94);
+  --app-line: rgba(45, 55, 72, 0.22);
+  --app-field: rgba(224, 229, 237, 0.98);
+  --app-soft: rgba(68, 82, 104, 0.11);
+  --app-sidebar: rgba(194, 202, 215, 0.82);
+  --app-nav-active-bg: #273142;
+  --app-nav-active-text: #f8fafc;
+  --app-hover: rgba(54, 65, 82, 0.1);
+  --app-button-bg: #273142;
+  --app-button-text: #f8fafc;
+  --app-button-hover: #364156;
+  --app-success: #128a4b;
+  --app-danger: #c43b4d;
+  --app-warn: #9a6a00;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-family: Inter, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+select option {
+  background: #18181b;
+  color: #fafafa;
+  font-size: 14px;
+}
+
+.theme-light select option {
+  background: #eef1f5;
+  color: #1d2430;
+}
+
+.glass {
+  border: 1px solid var(--app-line);
+  background: var(--app-panel);
+  box-shadow: 0 16px 44px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.theme-light .glass {
+  box-shadow: 0 12px 34px rgba(42, 52, 68, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
+.surface-soft {
+  border: 1px solid var(--app-line);
+  background: var(--app-soft);
+}
+
+.text-success {
+  color: var(--app-success);
+}
+
+.text-danger {
+  color: var(--app-danger);
+}
+
+.text-warning {
+  color: var(--app-warn);
+}
+
+.surface-field {
+  border-color: var(--app-line);
+  background: var(--app-field);
+  color: var(--app-text);
+}
+
+.theme-light .surface-field::placeholder {
+  color: #7a8494;
+}
+
+.text-app-muted {
+  color: var(--app-muted);
+}
+
+.scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.35);
+  border-radius: 999px;
+}
