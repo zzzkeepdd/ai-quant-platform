@@ -3,8 +3,9 @@ from typing import Any, AsyncIterator
 
 from .backtest import market_snapshot
 from .config import DEEPSEEK_BASE_URL, DEEPSEEK_DEFAULT_MODEL, STRATEGY_MAPPING
-from .database import append_log, now_iso
+from .database import append_log, get_setting, now_iso
 from .logging_service import safe_payload
+from .market_data import fetch_live_market, fetch_onchain_summary
 from .optimizer import auto_optimize_strategy
 from .secrets import load_secret
 
@@ -57,6 +58,71 @@ class AIEngine:
             return "DeepSeek 调用超时：已切换本地行情分析。"
         return "DeepSeek 调用失败：已切换本地行情分析。"
 
+    def _deepseek_base_urls(self) -> list[str]:
+        urls = [DEEPSEEK_BASE_URL, "https://api.deepseek.com/v1"]
+        unique: list[str] = []
+        for url in urls:
+            if url not in unique:
+                unique.append(url)
+        return unique
+
+    async def _chat_once(self, key: str, base_url: str, messages: list[dict[str, str]], max_tokens: int, timeout: int):
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(api_key=key, base_url=base_url, http_client=self._http_client())
+        return await client.chat.completions.create(
+            model=DEEPSEEK_DEFAULT_MODEL,
+            messages=messages,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
+
+    def _http_client(self):
+        import httpx
+
+        proxy = get_setting("proxy", {"type": "http", "host": "127.0.0.1", "port": 7897})
+        if proxy.get("type") == "none":
+            return httpx.AsyncClient()
+        proxy_url = f"{proxy.get('type', 'http')}://{proxy.get('host', '127.0.0.1')}:{proxy.get('port', 7897)}"
+        return httpx.AsyncClient(proxy=proxy_url)
+
+    async def _chat_with_fallback(self, key: str, messages: list[dict[str, str]], max_tokens: int, timeout: int):
+        last_exc: Exception | None = None
+        for base_url in self._deepseek_base_urls():
+            try:
+                return await self._chat_once(key, base_url, messages, max_tokens, timeout)
+            except Exception as exc:
+                last_exc = exc
+                if self._is_auth_error(exc):
+                    raise
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("DeepSeek request failed")
+
+    async def _stream_once(self, key: str, base_url: str, messages: list[dict[str, str]], timeout: int):
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(api_key=key, base_url=base_url, http_client=self._http_client())
+        return await client.chat.completions.create(
+            model=DEEPSEEK_DEFAULT_MODEL,
+            messages=messages,
+            stream=True,
+            timeout=timeout,
+        )
+
+    async def _stream_with_fallback(self, key: str, messages: list[dict[str, str]], timeout: int):
+        last_exc: Exception | None = None
+        for base_url in self._deepseek_base_urls():
+            try:
+                return await self._stream_once(key, base_url, messages, timeout)
+            except Exception as exc:
+                last_exc = exc
+                if self._is_auth_error(exc):
+                    raise
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("DeepSeek stream failed")
+
     async def validate_connection(self) -> dict[str, Any]:
         key = load_secret("deepseek_api_key")
         if not key:
@@ -64,15 +130,7 @@ class AIEngine:
             self.last_error = None
             return self.status()
         try:
-            from openai import AsyncOpenAI
-
-            client = AsyncOpenAI(api_key=key, base_url=DEEPSEEK_BASE_URL)
-            await client.chat.completions.create(
-                model=DEEPSEEK_DEFAULT_MODEL,
-                messages=[{"role": "user", "content": "ping"}],
-                max_tokens=1,
-                timeout=12,
-            )
+            await self._chat_with_fallback(key, [{"role": "user", "content": "ping"}], 1, 12)
             self.valid = True
             self.last_error = None
         except Exception as exc:
@@ -91,6 +149,13 @@ class AIEngine:
             for symbol in self._symbols(payload.get("symbol"))
         ]
         enriched["market_data_note"] = "默认使用OKX最新公共K线；只有OKX不可用或指定历史日期时才回退项目缓存。"
+        enriched["live_tickers"] = fetch_live_market()
+        enriched["onchain_summary"] = fetch_onchain_summary()
+        enriched["data_contract"] = {
+            "market_data": "OKX public candles snapshot for structure/trend/volatility",
+            "live_tickers": "OKX public tickers for latest price, bid/ask, 24h change and volume",
+            "onchain_summary": "DefiLlama chain TVL summary for Bitcoin/Ethereum/Solana",
+        }
         if payload.get("auto_optimization"):
             enriched["auto_optimization"] = payload["auto_optimization"]
         return enriched
@@ -130,15 +195,7 @@ class AIEngine:
             self._log_decision(task_type, prompt, "".join(fallback), payload)
             return
         try:
-            from openai import AsyncOpenAI
-
-            client = AsyncOpenAI(api_key=key, base_url=DEEPSEEK_BASE_URL)
-            stream = await client.chat.completions.create(
-                model=DEEPSEEK_DEFAULT_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                stream=True,
-                timeout=45,
-            )
+            stream = await self._stream_with_fallback(key, [{"role": "user", "content": prompt}], 45)
             collected = []
             async for chunk in stream:
                 text = chunk.choices[0].delta.content or ""

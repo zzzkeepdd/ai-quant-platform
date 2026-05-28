@@ -1,10 +1,13 @@
+import os
+import sys
 from pathlib import Path
 
 
 # 项目根目录：backend/app/config.py -> backend -> 项目根
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(os.environ.get("AI_QUANT_PROJECT_ROOT") or getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
 BACKEND_ROOT = PROJECT_ROOT / "backend"
 STRATEGY_DIR = PROJECT_ROOT / "strategies"
+FRONTEND_DIST_DIR = PROJECT_ROOT / "frontend" / "dist"
 BACKEND_DATA_DIR = BACKEND_ROOT / "data_cache"
 DATA_CACHE_DIR = PROJECT_ROOT / "data_cache"
 MARKET_DATA_DIR = BACKEND_DATA_DIR / "market_data"
@@ -17,8 +20,8 @@ SUPPORTED_SYMBOLS = ["BTC/USDT:USDT", "ETH/USDT:USDT", "SOL/USDT:USDT"]
 TIMEFRAME = "1h"
 DEFAULT_MARKET_MODE = "sandbox"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-DEEPSEEK_DEFAULT_MODEL = "deepseek-chat"
-DEEPSEEK_FAST_MODEL = "deepseek-chat"
+DEEPSEEK_DEFAULT_MODEL = "deepseek-v4-pro"
+DEEPSEEK_FAST_MODEL = "deepseek-v4-flash"
 
 STRATEGY_MAPPING = {
     "TRENDING": "BOS移动止损增强版.py",

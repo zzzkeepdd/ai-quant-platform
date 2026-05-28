@@ -6,6 +6,7 @@ from app.ai import ai_engine
 from app.backtest import default_param_grid, iterate_parameters, run_backtest
 from app.exchange import ExchangeManager
 from app.main import app
+from app.market_data import fetch_live_market, fetch_onchain_summary
 from app.optimizer import auto_optimize_strategy
 from app.replay import run_replay
 from app.risk import RiskGuard, get_risk_rules, save_risk_rules
@@ -168,11 +169,118 @@ def test_consecutive_failures_pause_trading():
     assert not engine.running
 
 
+def test_demo_test_order_places_only_after_confirmation(monkeypatch):
+    engine = TradingEngine()
+    calls = []
+
+    def fake_get_setting(key, default=None):
+        return "sandbox" if key == "market_mode" else default
+
+    def fake_place_order(order):
+        calls.append(order)
+        return {"code": "0", "data": [{"ordId": "demo-order", "sCode": "0"}]}
+
+    async def fake_positions():
+        return [{"instId": "SOL-USDT-SWAP", "pos": "1"}]
+
+    monkeypatch.setattr("app.trading.get_setting", fake_get_setting)
+    monkeypatch.setattr("app.trading.exchange_manager.place_order", fake_place_order)
+    monkeypatch.setattr("app.trading.exchange_manager.positions", fake_positions)
+
+    blocked = asyncio.run(engine.place_demo_test_order(False))
+    assert not blocked["ok"]
+    assert calls == []
+
+    placed = asyncio.run(engine.place_demo_test_order(True))
+    assert placed["ok"]
+    assert calls[0]["instId"] == "SOL-USDT-SWAP"
+    assert calls[0]["ordType"] == "market"
+
+
 def test_api_health_and_strategies():
     client = TestClient(app)
     assert client.get("/api/health").json()["ok"]
     strategies = client.get("/api/strategies").json()
     assert len(strategies) == 4
+
+
+class _FakeResponse:
+    def __init__(self, payload, status_code=200):
+        self._payload = payload
+        self.status_code = status_code
+
+    def json(self):
+        return self._payload
+
+
+def test_live_market_reads_okx_public_tickers(monkeypatch):
+    def fake_get(url, params=None, **kwargs):
+        assert params == {"instType": "SWAP"}
+        return _FakeResponse(
+            {
+                "code": "0",
+                "data": [
+                    {
+                        "instId": "BTC-USDT-SWAP",
+                        "instType": "SWAP",
+                        "last": "100",
+                        "open24h": "95",
+                        "high24h": "105",
+                        "low24h": "90",
+                        "volCcyQuote24h": "123456",
+                        "bidPx": "99.5",
+                        "askPx": "100.5",
+                        "ts": "1770000000000",
+                    },
+                    {
+                        "instId": "ETH-USDT-SWAP",
+                        "instType": "SWAP",
+                        "last": "200",
+                        "open24h": "190",
+                        "volCcyQuote24h": "10",
+                        "bidPx": "199",
+                        "askPx": "201",
+                        "ts": "1770000000000",
+                    },
+                    {
+                        "instId": "SOL-USDT-SWAP",
+                        "instType": "SWAP",
+                        "last": "30",
+                        "open24h": "31",
+                        "volCcyQuote24h": "20",
+                        "bidPx": "29",
+                        "askPx": "30",
+                        "ts": "1770000000000",
+                    },
+                ],
+            }
+        )
+
+    monkeypatch.setattr("app.market_data._market_cache", None)
+    monkeypatch.setattr("app.market_data.requests.get", fake_get)
+    result = fetch_live_market()
+    assert result["ok"]
+    assert len(result["data"]) == 3
+    assert result["data"][0]["source"] == "okx_public_ticker"
+    assert result["data"][0]["change_24h_pct"] > 5
+
+
+def test_onchain_summary_reads_defillama_chains(monkeypatch):
+    def fake_get(url, **kwargs):
+        return _FakeResponse(
+            [
+                {"name": "Bitcoin", "tokenSymbol": "BTC", "tvl": 10, "change_1d": 1.2, "change_7d": -2, "protocols": 3},
+                {"name": "Ethereum", "tokenSymbol": "ETH", "tvl": 20, "change_1d": 0.2, "change_7d": 4, "protocols": 400},
+                {"name": "Solana", "tokenSymbol": "SOL", "tvl": 30, "change_1d": -0.8, "change_7d": 1, "protocols": 120},
+            ]
+        )
+
+    monkeypatch.setattr("app.market_data._onchain_cache", None)
+    monkeypatch.setattr("app.market_data.requests.get", fake_get)
+    result = fetch_onchain_summary()
+    assert result["ok"]
+    assert [row["asset"] for row in result["data"]] == ["BTC", "ETH", "SOL"]
+    assert result["data"][1]["chain"] == "Ethereum"
 
 
 def test_settings_empty_secret_submit_does_not_clear_existing_secret():

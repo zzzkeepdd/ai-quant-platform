@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 node_modules/
 dist/
+build/
 .env
 data_cache/*.sqlite3
 data_cache/*.sqlite3-*
@@ -16,3 +17,7 @@ frontend/.vite/
 backend/.venv/
 .chrome-*/
 .edge-*/
+backend/data_cache/*.log
+frontend/*.log
+release/
+*.spec~

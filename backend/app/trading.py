@@ -3,8 +3,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .backtest import market_snapshot
-from .config import SUPPORTED_SYMBOLS
-from .database import now_iso
+from .config import DEFAULT_MARKET_MODE, SUPPORTED_SYMBOLS
+from .database import get_setting, now_iso
 from .exchange import exchange_manager
 from .logging_service import log_trade
 from .optimizer import auto_optimize_strategy
@@ -61,6 +61,39 @@ class TradingEngine:
             self.task.cancel()
         log_trade("WARN", "自动交易已停止")
         return {"ok": True, "message": "自动交易已停止", "status": self.status()}
+
+    async def place_demo_test_order(
+        self,
+        confirm: bool,
+        inst_id: str = "SOL-USDT-SWAP",
+        side: str = "buy",
+        size: str = "1",
+        td_mode: str = "cross",
+    ) -> dict[str, Any]:
+        if not confirm:
+            return {"ok": False, "message": "测试下单必须先确认"}
+        if get_setting("market_mode", DEFAULT_MARKET_MODE) != "sandbox":
+            return {"ok": False, "message": "测试下单只允许在 OKX 模拟盘模式执行"}
+        if inst_id not in {"BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP"}:
+            return {"ok": False, "message": "测试下单仅开放 BTC/ETH/SOL USDT 永续合约"}
+        if side not in {"buy", "sell"}:
+            return {"ok": False, "message": "测试下单方向必须是 buy 或 sell"}
+        order = {
+            "instId": inst_id,
+            "tdMode": td_mode,
+            "side": side,
+            "ordType": "market",
+            "sz": size,
+        }
+        try:
+            result = exchange_manager.place_order(order)
+            positions = await exchange_manager.positions()
+            message = f"OKX模拟盘测试下单成功：{inst_id} {side} {size}张"
+            log_trade("INFO", message, symbol=inst_id, payload={"order": order, "response": result})
+            return {"ok": True, "message": message, "order": order, "response": result, "positions": positions}
+        except Exception as exc:
+            failure = self.record_order_failure(inst_id, f"OKX模拟盘测试下单失败：{str(exc)[:160]}")
+            return {"ok": False, "message": failure["message"], "order": order}
 
     async def _loop(self) -> None:
         while self.running:

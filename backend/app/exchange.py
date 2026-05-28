@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac
+import json
 import time
 from typing import Any
 from urllib.parse import urlencode
@@ -96,16 +97,22 @@ class ExchangeManager:
         client = ccxt.okx(options)
         return client
 
-    def _signed_request(self, method: str, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _signed_request(
+        self,
+        method: str,
+        path: str,
+        params: dict[str, Any] | None = None,
+        body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         api_key = load_secret("okx_api_key")
         secret = load_secret("okx_secret_key")
         password = load_secret("okx_password")
         if not api_key or not secret or not password:
             raise RuntimeError("OKX API Key、Secret或Passphrase尚未配置")
         query = f"?{urlencode(params)}" if params else ""
-        body = ""
+        body_text = json.dumps(body, separators=(",", ":")) if body is not None else ""
         timestamp = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-        prehash = f"{timestamp}{method.upper()}{path}{query}{body}"
+        prehash = f"{timestamp}{method.upper()}{path}{query}{body_text}"
         signature = base64.b64encode(hmac.new(secret.encode(), prehash.encode(), hashlib.sha256).digest()).decode()
         headers = {
             "OK-ACCESS-KEY": api_key,
@@ -120,7 +127,7 @@ class ExchangeManager:
             method.upper(),
             f"https://www.okx.com{path}{query}",
             headers=headers,
-            data=body,
+            data=body_text,
             proxies=self._requests_proxies(),
             timeout=15,
         )
@@ -128,6 +135,9 @@ class ExchangeManager:
         if response.status_code >= 400 or data.get("code") not in (None, "0"):
             raise RuntimeError(f"OKX {path} failed: {data}")
         return data
+
+    def place_order(self, order: dict[str, Any]) -> dict[str, Any]:
+        return self._signed_request("POST", "/api/v5/trade/order", body=order)
 
     def _requests_proxies(self) -> dict[str, str] | None:
         proxy = self._proxy_url()

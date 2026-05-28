@@ -54,6 +54,14 @@ class TradingStartRequest(BaseModel):
     confirm: bool = False
 
 
+class TradingTestOrderRequest(BaseModel):
+    inst_id: Literal["BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP"] = "SOL-USDT-SWAP"
+    side: Literal["buy", "sell"] = "buy"
+    size: str = Field(default="1", pattern=r"^[0-9]+(\.[0-9]+)?$")
+    td_mode: Literal["cross", "isolated"] = "cross"
+    confirm: bool = False
+
+
 class ReplayRequest(BaseModel):
     symbol: str = "BTC/USDT:USDT"
     strategy_file: str = "BOS移动止损增强版.py"

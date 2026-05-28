@@ -3,18 +3,20 @@ from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from .ai import ai_engine
 from .backtest import iterate_parameters, run_backtest
-from .config import APP_VERSION, DEFAULT_MARKET_MODE
+from .config import APP_VERSION, DEFAULT_MARKET_MODE, FRONTEND_DIST_DIR
 from .database import database_ready, get_setting, init_db, set_setting
 from .exchange import exchange_manager
 from .logging_service import export_csv, log_system, safe_payload
+from .market_data import fetch_live_market, fetch_onchain_summary
 from .optimizer import auto_optimize_strategy
 from .replay import run_replay
 from .risk import get_risk_rules, risk_guard, save_risk_rules
-from .schemas import AITaskRequest, BacktestRequest, ParameterIterationRequest, ReplayRequest, RiskRulesPayload, SecretPayload, TradingStartRequest
+from .schemas import AITaskRequest, BacktestRequest, ParameterIterationRequest, ReplayRequest, RiskRulesPayload, SecretPayload, TradingStartRequest, TradingTestOrderRequest
 from .secrets import has_secret, save_secret
 from .strategy_loader import list_strategies
 from .trading import trading_engine
@@ -28,6 +30,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+if FRONTEND_DIST_DIR.exists():
+    assets_dir = FRONTEND_DIST_DIR / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
 
 @app.on_event("startup")
@@ -140,6 +147,16 @@ async def exchange_orders() -> list[dict[str, Any]]:
     return await exchange_manager.orders()
 
 
+@app.get("/api/market/live")
+async def market_live() -> dict[str, Any]:
+    return fetch_live_market()
+
+
+@app.get("/api/onchain/summary")
+async def onchain_summary() -> dict[str, Any]:
+    return fetch_onchain_summary()
+
+
 @app.post("/api/backtest/run")
 async def backtest(payload: BacktestRequest) -> dict[str, Any]:
     return run_backtest(
@@ -223,6 +240,17 @@ async def trading_stop() -> dict[str, Any]:
     return await trading_engine.stop()
 
 
+@app.post("/api/trading/test-order")
+async def trading_test_order(payload: TradingTestOrderRequest) -> dict[str, Any]:
+    return await trading_engine.place_demo_test_order(
+        payload.confirm,
+        inst_id=payload.inst_id,
+        side=payload.side,
+        size=payload.size,
+        td_mode=payload.td_mode,
+    )
+
+
 @app.post("/api/replay/run")
 async def replay(payload: ReplayRequest) -> dict[str, Any]:
     return run_replay(
@@ -274,6 +302,19 @@ async def ws_ai(websocket: WebSocket, task_id: str) -> None:
     async for chunk in ai_engine.stream(task_id, task_type, payload):
         await websocket.send_json({"delta": chunk})
     await websocket.send_json({"done": True})
+
+
+@app.get("/", include_in_schema=False)
+async def frontend_index() -> FileResponse:
+    return FileResponse(FRONTEND_DIST_DIR / "index.html")
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def frontend_app(full_path: str) -> FileResponse:
+    index = FRONTEND_DIST_DIR / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return FileResponse(FRONTEND_DIST_DIR / full_path)
 
 
 if __name__ == "__main__":
