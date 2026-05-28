@@ -82,6 +82,14 @@ http://127.0.0.1:8000
 
 如果 8000 端口已被占用，启动器会自动尝试 8001、8002 等后续端口，并打开正确地址。EXE 使用打包好的前端静态文件，不需要单独启动 Vite。
 
+Release 同时提供安装包：
+
+```text
+AIQuantPlatform-v1.0.0-setup.exe
+```
+
+安装包会把程序安装到当前用户的 `%LOCALAPPDATA%\AIQuantPlatform`，并创建桌面和开始菜单快捷方式，不需要管理员权限。
+
 ## 配置
 
 在“系统设置”页填写：
@@ -188,6 +196,8 @@ pyinstaller packaging/windows_launcher.spec --clean --noconfirm
 ```text
 dist/AIQuantPlatform/AIQuantPlatform.exe
 ```
+
+Windows 安装包使用系统自带 IExpress 生成，打包内容包括 `AIQuantPlatform-v1.0.0-windows.zip`、`packaging/installer/install.cmd` 和 `packaging/installer/install.ps1`。
 
 ## 安全说明
 
